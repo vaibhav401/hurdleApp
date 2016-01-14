@@ -17,6 +17,8 @@ class User
 	property :id, Serial
 	property :username, String, :length => 1..255
 	property :password, BCryptHash
+	property :created_at, DateTime   # handles by datamapper
+	property :updated_at, DateTime   # handles by datamapper
 
 	has n, :todos
 	belongs_to :team
@@ -31,7 +33,8 @@ class Authorization
 	property :id, Serial
 	property :isScrumMaster, Boolean
 	property :updateSubscribe, Boolean
-
+	property :created_at, DateTime   # handles by datamapper
+	property :updated_at, DateTime   # handles by datamapper
 	belongs_to :user
 end
 
@@ -41,6 +44,8 @@ class Team
 	property :id, Serial
 	property :hastag, String, :length => 1..255
 	property :description, Text, :lazy => false
+	property :created_at, DateTime   # handles by datamapper
+	property :updated_at, DateTime   # handles by datamapper
 
 	validates_uniqueness_of :hastag
 
@@ -53,7 +58,7 @@ class Todo
 	property :id, Serial
 	property :title, String , :length => 1..255
 	property :description, Text, :lazy => false
-	property :isComplete, Boolean
+	property :isComplete, Boolean, :default => false 
 	property :created_at, DateTime   # handles by datamapper
 	property :updated_at, DateTime   # handles by datamapper
 
@@ -96,13 +101,13 @@ post '/signin' do
 	password = req["password"]
 	if username and password
 		user = User.first(:username => username)
-		if user.password == password
+		if user and user.password == password
 			token = SecureRandom.urlsafe_base64
 			redis.setnx token, user.id
 			req["token"] = token
 			return (json req)
 		end
-		halt 401, "Wrong U or Password"
+		halt 401, "Wrong Username or Password"
 	end
 	headers['WWW-Authenticate'] = 'Wrong Username password'
     halt 401, "Not authorized\n"
@@ -112,15 +117,17 @@ end
 post '/todo' do
 	user = protected!(redis)
 	req = processJson request 
-	title = req[:title]
-	description = req[:description]
+	title = req["title"]
+	description = req["description"]
 	if title and description
-		todo = Todo.create(:title => title, :description => description)
-		todo.user = user
+		todo = Todo.create("title" => title, "description" => description, "user" => user)
 		todo.save
-		json ({"id " => todo.id, "title" => todo.title, "description" => todo.description, "isComplete" => todo.isComplete}) if todo.saved?
+		todo.errors.each do |error|
+			puts error
+		end
+		 return json ({"id " => todo.id, "title" => todo.title, "description" => todo.description, "isComplete" => todo.isComplete}) if todo.saved?
 	end
-	halt 401, "Wrong Parameters"
+	halt 401, "Wrong Parameters "
 end
 
 post '/todo/:id' do
@@ -155,20 +162,28 @@ get '/user/:id/todos' do
 	user.todos.each do |todo|
 		result[todo.id.to_s] = ({"id " => todo.id, "title" => todo.title, "description" => todo.description})
 	end
-	return json result
+	return (json result)
 end
 
 
 
 post '/user' do 
 	req = processJson request 
-	username = req[:username]
-	password = req[:password]
-	if username and password
-		u = User.create(:Username => username, :password => password)
-		( return json ({"id " => u.id, "username" => u.username})) if user.saved?
+	username = req["username"]
+	password = req["password"]
+	team = Team.first(req["team_id"]) 
+	if username and password and team
+		user = User.create("username" => username, "password" => password, "team" => team)
+		if user.saved?
+			(return json({"id " => user.id, "username" => user.username}) ) 
+		else
+			message = "User creation failed "
+			user.errors.each do |error|
+				puts error
+			end
+		end
 	end
-	halt 401, "Not authorized\n"
+	halt 401, (message ? message : "Insufficient Parameters")
 end
 
 post '/user/:id' do
@@ -186,7 +201,7 @@ post '/user/:id' do
 			t.save
 		end
 		u.save
-		json ({"id " => u.id, "username" => u.username}) if user.saved?
+		return json ({"id " => u.id, "username" => u.username}) if user.saved?
 	end
 	halt 401, "Not authorized\n"
 end
@@ -206,7 +221,7 @@ post '/team' do
 	description = req["description"]
 	if hastag and description
 		team = Team.create("hastag" => hastag, "description" => description)
-		json ({"id" => team.id, "description" => team.description, "hastag" => team.hastag}) if teams.saved?
+		return json ({"id" => team.id, "description" => team.description, "hastag" => team.hastag}) if teams.saved?
 	end
 	halt 401, "Not authorized\n"
 end
