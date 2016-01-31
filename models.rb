@@ -12,7 +12,7 @@ class User
 	property :password, BCryptHash
 	property :created_at, DateTime   # handles by datamapper
 	property :updated_at, DateTime   # handles by datamapper
-	property :sync_code, String		# to ensure sync is correct
+	property :sync_code, String		# to ensure sync is correct and make it unique
 	property :image_url, String 	# to get image from imgur
 	
 	has n, :tasks 					# for task related to this user
@@ -70,7 +70,7 @@ class Team
 	has n, :tasks
 	def to_json (*a)
 		{
-			:name => name
+			:name => name,
 			:sync_code => sync_code,
 			:image_url => image_url,
 			:members_ids  => members.map {|member| member.id},

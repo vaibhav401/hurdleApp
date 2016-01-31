@@ -88,8 +88,19 @@ end
 		protected!
 	end
 
+	def verify_task_sync (sync_code)
+		task = Task.first(:sync_code => sync_code)
+		if task
+			json @task
+		else
+			true
+		end
+	end
+
 	post '/tasks' do
 		request_hash = processJson request
+		sync_code = request_hash["sync_code"]
+		verify_task_sync(sync_code)
 		task = Task.from_hash(request_hash)
 		task.user = @user
 		task.team = @user.team
@@ -103,6 +114,8 @@ end
 
 	patch '/task/:id' do
 		request_hash = processJson request
+		sync_code = request_hash["sync_code"]
+		verify_task_sync(sync_code)
 		task = Task.first(:id => params[:id].to_i)
 		task.update_from_hash request_hash
 		return_value = nil
@@ -155,8 +168,20 @@ end
 		protected!
 	end
 
+
+	def verify_task_sync (sync_code)
+		user = User.first(:sync_code => sync_code)
+		if user
+			json @user
+		else
+			true
+		end
+	end
+
 	post '/user' do  
 		req = processJson request
+		sync_code = request_hash["sync_code"]
+		verify_task_sync(sync_code)
 		user = User.from_hash(req)
 		binding.pry
 		if user.save
@@ -168,6 +193,8 @@ end
 
 	patch '/user/:id' do
 		req = processJson request
+		sync_code = request_hash["sync_code"]
+		verify_task_sync(sync_code)
 		@user.update_from_hash(req)
 		if @user.save
 			json @user
@@ -187,24 +214,57 @@ end
 
 # put passowrd change in different thread
 
-get '/teams' do
-	teams = Team.all()
-	json teams
-end
-
 
 # team code to be handleed {"name" : "", "details" : "", "sync_code" : "" }
+	
 	before '/team*' do
 		protected!
 	end
 
+	def verify_task_sync (sync_code)
+		user = User.first(:sync_code => sync_code)
+		if user
+			json @user
+		else
+			true
+		end
+	end
+
+	before '/team/*' do
+		@team = @user.team
+		req = processJson request 
+		sync_code = request_hash["sync_code"]
+		verify_task_sync(sync_code)
+		@user_to_modify = User.first("id" => req["user_id"])
+		if not @team and @user_to_modify and @team.scrum_master != @user
+			halt 404, "not found"
+		end
+	end
+
 	get '/team' do
-		json @user.team
+		@user.team.to_json
 	end
 
 	post '/team' do
 		req = processJson request 
+		sync_code = request_hash["sync_code"]
+		verify_task_sync(sync_code)
 		team =  Team.new(req)
+		team.scrum_master = @user
+		team.members.push @user
+		if team.save
+			json team
+		else
+			json (errorHash team)
+		end
+	end
+
+	patch '/team' do
+		req = processJson request 
+		sync_code = request_hash["sync_code"]
+		verify_task_sync(sync_code)
+		team = @user.team
+		team.update_from_hash req
 		team.scrum_master = @user
 		if team.save
 			json team
@@ -214,30 +274,22 @@ end
 	end
 
 
-	post '/team/members/' do 
-		protected!
-		req = processJson request 
-		user = User.first("id" => req["user_id"])
-		if user and @user.team
-			@user.team.members.push user
-				# check if previous link is broken 
-			if @user.team.save and user.save
-				return @user.team
-			end
+	patch '/team/members' do 
+		@team.members.push @user_to_modify
+		if @team.save
+			json @team
 		else
-			halt 401, "Insufficient arguments\n"
+			json errorHash @team
 		end
 	end
 
 	# to delete a memeber from members
-	delete '/team/members/' do 
-		protected!
-		user_to_remove= User.first("id" => req["user_id"])
-		if user_to_remove and @user.team
-			@user.team.members.delete user_to_remove
+	delete '/team/members' do 
+		@team.members.delete user_to_modify
+		if @team.save
 			json @team
 		else
-			halt 401, "Insufficient arguments\n"
+			json errorHash @team
 		end
 	end
 
