@@ -1,4 +1,4 @@
-require 'data_mapper'
+ require 'data_mapper'
 require 'dm-core'
 require 'dm-types'
 require 'dm-validations'
@@ -96,12 +96,13 @@ class Task
 
 	property :id, Serial
 	property :title, String , :length => 1..80
-	property :details, String , :length => 1..255
+	property :detail, String , :length => 1..255
 	property :isComplete, Boolean, :default => false 
 	property :created_at, DateTime   # handles by datamapper
 	property :updated_at, DateTime   # handles by datamapper
 	property :sync_code, String
 	property :image_url, String
+	property :priority
 
 	belongs_to :user
 	belongs_to :team
