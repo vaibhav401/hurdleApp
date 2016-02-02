@@ -102,7 +102,7 @@ class Task
 	property :updated_at, DateTime   # handles by datamapper
 	property :sync_code, String
 	property :image_url, String
-	property :priority
+	property :priority, Integer
 
 	belongs_to :user
 	belongs_to :team
@@ -122,6 +122,7 @@ class Task
 			:image_url => image_url,
 			:created_at => created_at,
 			:updated_at => updated_at,
+			:priority => priority
 		}.to_json(*a)
 	end
 

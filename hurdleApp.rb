@@ -164,7 +164,7 @@ end
 
 
 # user related routes
-	before '/user*' do
+	before '/user/*' do
 		protected!
 	end
 
@@ -179,23 +179,28 @@ end
 	end
 
 	post '/user' do  
-		req = processJson request
+		request_hash = processJson request
 		sync_code = request_hash["sync_code"]
 		verify_task_sync(sync_code)
-		user = User.from_hash(req)
-		binding.pry
+		user = User.from_hash(request_hash)
+		user.team_id = 10
 		if user.save
-			json user
+			token = digest(user.username, user.full_name)
+			session = Session.create(:user => user, :digest => token)
+			session.save
+			result = JSON.parse user.to_json
+			result["token"] = token 
+			json result
 		else
 			json (errorHash user)
 		end
 	end
 
 	patch '/user/:id' do
-		req = processJson request
+		request_hash = processJson request
 		sync_code = request_hash["sync_code"]
 		verify_task_sync(sync_code)
-		@user.update_from_hash(req)
+		@user.update_from_hash(request_hash)
 		if @user.save
 			json @user
 		else
@@ -232,10 +237,10 @@ end
 
 	before '/team/*' do
 		@team = @user.team
-		req = processJson request 
+		request_hash = processJson request 
 		sync_code = request_hash["sync_code"]
 		verify_task_sync(sync_code)
-		@user_to_modify = User.first("id" => req["user_id"])
+		@user_to_modify = User.first("id" => request_hash["user_id"])
 		if not @team and @user_to_modify and @team.scrum_master != @user
 			halt 404, "not found"
 		end
@@ -246,10 +251,10 @@ end
 	end
 
 	post '/team' do
-		req = processJson request 
+		request_hash = processJson request 
 		sync_code = request_hash["sync_code"]
 		verify_task_sync(sync_code)
-		team =  Team.new(req)
+		team =  Team.new(request_hash)
 		team.scrum_master = @user
 		team.members.push @user
 		if team.save
@@ -260,11 +265,11 @@ end
 	end
 
 	patch '/team' do
-		req = processJson request 
+		request_hash = processJson request 
 		sync_code = request_hash["sync_code"]
 		verify_task_sync(sync_code)
 		team = @user.team
-		team.update_from_hash req
+		team.update_from_hash request_hash
 		team.scrum_master = @user
 		if team.save
 			json team
