@@ -250,6 +250,22 @@ end
 		@user.team.to_json
 	end
 
+	get '/team/members/:time' do
+		time = params[:time]
+		if time < 0 or time > Time.now.to_i do
+			halt 401, "Unknown entity"
+		end
+		json @team.users_modified_after
+	end
+		get '/team/tasks/:time' do
+		time = params[:time]
+		if time < 0 or time > Time.now.to_i do
+			halt 401, "Unknown entity"
+		end
+		json @team.tasks_modified_after
+	end
+
+
 	post '/team' do
 		request_hash = processJson request 
 		sync_code = request_hash["sync_code"]
