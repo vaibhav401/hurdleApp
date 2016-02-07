@@ -30,7 +30,7 @@ require_relative 'models'
 
 
 def protected!
-	session = Session.first( :digest => env["HTTP_X_AUTH_TOKEN"] ) #checks for token in passed header
+	session = Session.first( :digest => env["HTTP_HTTP_X_AUTH_TOKEN"] ) #checks for token in passed header
 	if session.nil?
 		headers['WWW-Authenticate'] = 'Sign In'
 		halt 401, "Not authorized\n"
