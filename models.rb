@@ -36,6 +36,10 @@ class User
 		end
 		true
 	end
+	before :save do
+		self.modified_after = Time.now.to_i
+		true
+	end
 
 
 	def to_json(*a)
@@ -55,7 +59,7 @@ class User
 
 	def self.from_hash(hash)
 		user = User.new
-		user.password = password
+		user.password = hash["password"]
 		user.update_from_hash(hash)
 		user
 	end
@@ -75,6 +79,8 @@ class Team
 
 	property :id, Serial
 	property :name, String, :length => 5..255
+	property :pass, String, :length => 3..255
+
 	property :image_url, String 
 
 		# for server only 
@@ -99,11 +105,11 @@ class Team
 			:scrum_master => scrum_master.id,
 			# :created_at => created_at.strftime("%s"),
 			# :updated_at => updated_at.strftime("%s"),
-			:task_update_time => task_update_time,		
-			:user_update_time => user_update_time,
+			:task_modified_after => task_modified_after,		
+			:user_modified_after => user_modified_after,
 			:modified_after => modified_after,
-			:members_ids  => members.map {|member| member.id},
-			:task_ids  => tasks.map {|task| task.id},	
+			:members  => members.map {|member| member},
+			:tasks  => tasks.map {|task| task},	
 		}.to_json(*a)
 	end
 
@@ -114,6 +120,7 @@ class Team
 
 	def update_from_hash(hash)
 		self.name = hash["name"]
+		self.pass = hash["pass"]
 		self.image_url = hash["image_url"]	
 		self.modified_after = hash["modified_after"]
 	end
@@ -162,10 +169,10 @@ class Task
 		{
 			:id => id,
 			:title => title,
-			:details => details,
+			:detail => detail,
 			:is_complete => isComplete,
 			:user_id => user.id,
-			:team_id => team_id,
+			:team_id => team.id,
 			:image_url => image_url,
 			:modified_after => modified_after,
 			:created_after => created_after,

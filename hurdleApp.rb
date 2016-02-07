@@ -30,13 +30,12 @@ require_relative 'models'
 
 
 def protected!
-	session = Session.first( :digest => env["HTTP_HTTP_X_AUTH_TOKEN"] ) #checks for token in passed header
+	session = Session.first( :digest => env["HTTP_X_AUTH_TOKEN"] ) #checks for token in passed header
 	if session.nil?
 		headers['WWW-Authenticate'] = 'Sign In'
 		halt 401, "Not authorized\n"
 	end
 	@user =  session.user
-
 end
 
 
@@ -88,8 +87,8 @@ end
 		protected!
 	end
 
-	def verify_task_sync (sync_code)
-		task = Task.first(:sync_code => sync_code)
+	def verify_task_sync (modified_after)
+		task = Task.first(:modified_after => modified_after)
 		if task
 			json @task
 		else
@@ -99,8 +98,8 @@ end
 
 	post '/tasks' do
 		request_hash = processJson request
-		sync_code = request_hash["sync_code"]
-		verify_task_sync(sync_code)
+		modified_after = request_hash["modified_after"]
+		verify_task_sync(modified_after)
 		task = Task.from_hash(request_hash)
 		task.user = @user
 		task.team = @user.team
@@ -114,8 +113,8 @@ end
 
 	patch '/task/:id' do
 		request_hash = processJson request
-		sync_code = request_hash["sync_code"]
-		verify_task_sync(sync_code)
+		modified_after = request_hash["modified_after"]
+		verify_task_sync(modified_after)
 		task = Task.first(:id => params[:id].to_i)
 		task.update_from_hash request_hash
 		return_value = nil
@@ -169,37 +168,36 @@ end
 	end
 
 
-	def verify_task_sync (sync_code)
-		user = User.first(:sync_code => sync_code)
-		if user
-			json @user
-		else
-			true
-		end
-	end
 
 	post '/user' do  
 		request_hash = processJson request
-		sync_code = request_hash["sync_code"]
-		verify_task_sync(sync_code)
+		puts request
 		user = User.from_hash(request_hash)
-		user.team_id = 10
-		if user.save
-			token = digest(user.username, user.full_name)
-			session = Session.create(:user => user, :digest => token)
-			session.save
-			result = JSON.parse user.to_json
-			result["token"] = token 
-			json result
-		else
-			json (errorHash user)
+		team_name = request_hash["team_name"]
+		team_pass = request_hash["team_pass"]
+		team = Team.first(:name => team_name)
+		if team and team.pass == team_pass
+			user.team = team
+			if user.save
+				token = digest(user.username, user.full_name)
+				session = Session.create(:user => user, :digest => token)
+				session.save
+				result = JSON.parse user.to_json
+				result["token"] = token 
+				json result
+			else
+				json (errorHash user)
+			end
 		end
 	end
 
 	patch '/user/:id' do
 		request_hash = processJson request
-		sync_code = request_hash["sync_code"]
-		verify_task_sync(sync_code)
+		id = params[:id]
+		user = User.first(:id => id)
+		if not user or not (user == @user)
+			halt 401, "Not authorized"
+		end
 		@user.update_from_hash(request_hash)
 		if @user.save
 			json @user
@@ -219,21 +217,12 @@ end
 
 # put passowrd change in different thread
 
-
 # team code to be handleed {"name" : "", "details" : "", "sync_code" : "" }
 	
 	before '/team*' do
 		protected!
 	end
 
-	def verify_task_sync (sync_code)
-		user = User.first(:sync_code => sync_code)
-		if user
-			json @user
-		else
-			true
-		end
-	end
 
 	before '/team/*' do
 		@team = @user.team
@@ -252,14 +241,15 @@ end
 
 	get '/team/members/:time' do
 		time = params[:time]
-		if time < 0 or time > Time.now.to_i do
+		if (time < 0 or time > Time.now.to_i ) 
 			halt 401, "Unknown entity"
 		end
 		json @team.users_modified_after
 	end
-		get '/team/tasks/:time' do
+
+	get '/team/tasks/:time' do
 		time = params[:time]
-		if time < 0 or time > Time.now.to_i do
+		if time < 0 or time > Time.now.to_i 
 			halt 401, "Unknown entity"
 		end
 		json @team.tasks_modified_after
@@ -294,7 +284,6 @@ end
 		end
 	end
 
-
 	patch '/team/members' do 
 		@team.members.push @user_to_modify
 		if @team.save
@@ -304,7 +293,7 @@ end
 		end
 	end
 
-	# to delete a memeber from members
+	# # to delete a memeber from members
 	delete '/team/members' do 
 		@team.members.delete user_to_modify
 		if @team.save
@@ -314,15 +303,16 @@ end
 		end
 	end
 
-	# post '/team/scrum_master' do 
-	# 	protected! 
-	# 	team = @user.team
-	# 	team.scrum_master = @user
-	# 	if team.save
-	# 		json team
-	# 	else
-	# 		json (errorHash team)
-	# end
+	post '/team/scrum_master' do 
+		protected! 
+		team = @user.team
+		team.scrum_master = @user
+		if team.save
+			json team
+		else
+			json (errorHash team)
+		end
+	end
 
 
 # # post '/teams/:id' do
@@ -342,5 +332,4 @@ end
 def digest(username, full_name)
 	Digest::SHA256.hexdigest (username + full_name)
 end
-
 
