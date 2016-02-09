@@ -10,16 +10,8 @@ require_relative 'models'
 	# create input  first point out things you are expecting at first
 	# Only creation should handle the sync phase
 # No need for an extra key sync, choose _id to be unique 
-	# handle sync staus  
-	# create routes for srcum_master and user in a team 
-	# design spicifc and sensible points
-	# check creation on new user and weird edge case
-	# handle creation of team
-	# handle insertion of new user into team
-	# handle deletion of user from team
-	# handle creation of scrum master -> handled
+# get error handling up and running
 	#JSON.parse (request.body.read)
-	# handle sync code and imageurl - > handled
 
 
 
@@ -42,6 +34,7 @@ end
 def processJson (request)
 	request.body.rewind
   	request_payload = JSON.parse request.body.read
+  	puts request_payload
   	request_payload
 end
 
@@ -51,10 +44,13 @@ def errorHash ( object)
 	object.errors.full_messages.each do |msg|
 		errors[i] = msg
 	end	
-	error["error_code"] = "" #put error code here
+	errors["error_code"] = "" #put error code here
 	errors
 end 
 
+def objectArrayToJson(obj)
+	(obj).map { |o| Hash[o.to_hash.each_pair.to_a] }.to_json
+end
 
 post '/signin' do
 	req = processJson request # process the json request body
@@ -65,14 +61,13 @@ post '/signin' do
 		if user and user.password == password
 			session = Session.first(:user => user) # if a session already exists return it 
 			if not session.nil?
-				return { :token => session.digest}.to_json
+				return (json session)
 			end
 			token = digest(user.username, user.full_name)
 			session = Session.create(:user => user, :digest => token)
 			session.save
-			req["token"] = token
-			# binding.pry for debugging
-			return json req # return json with token
+			binding.pry #for debugging
+			return json (session) # return json with token
 		end
 	end
 	headers['WWW-Authenticate'] = 'Wrong Username password'
@@ -127,14 +122,14 @@ end
 
 
 	get '/tasks' do
-		json @user.tasks
+		objectArrayToJson @user.tasks
 	end
 
 	# tasks for a particular user
 	get '/tasks/user/:id' do
 		user = User.first("id" => params[:id].to_i)
 		if not user.nil?
-			return json user.tasks
+			return objectArrayToJson( user.tasks)
 		else
 			halt 401, "Wrong arguments"
 		end
@@ -144,7 +139,7 @@ end
 	get '/tasks/team/:id' do
 		team = Team.first("id" => params[:id].to_i)
 		if not team.nil?
-			return json team.tasks
+			return json (team.tasks)
 		else
 			halt 401, "Wrong arguments"
 		end
@@ -155,7 +150,7 @@ end
 	get '/tasks/team' do
 		team = @user.team
 		if not team.nil?
-			return  json team.tasks 
+			return  objectArrayToJson(team.tasks) 
 		else
 			halt 401, "Wrong arguments"
 		end
@@ -167,7 +162,10 @@ end
 		protected!
 	end
 
-
+	get '/user' do
+		protected!
+		json @user
+	end
 
 	post '/user' do  
 		request_hash = processJson request
@@ -184,8 +182,10 @@ end
 				session.save
 				result = JSON.parse user.to_json
 				result["token"] = token 
+				puts result
 				json result
 			else
+				puts user
 				json (errorHash user)
 			end
 		end
@@ -221,14 +221,15 @@ end
 	
 	before '/team*' do
 		protected!
+		@team = @user.team
 	end
 
 
-	before '/team/*' do
+	before '/team/[a-zA-Z]' do
 		@team = @user.team
 		request_hash = processJson request 
-		sync_code = request_hash["sync_code"]
-		verify_task_sync(sync_code)
+		# sync_code = request_hash["sync_code"]
+		# verify_task_sync(sync_code)
 		@user_to_modify = User.first("id" => request_hash["user_id"])
 		if not @team and @user_to_modify and @team.scrum_master != @user
 			halt 404, "not found"
@@ -236,23 +237,23 @@ end
 	end
 
 	get '/team' do
-		@user.team.to_json
+		json @user.team
 	end
 
 	get '/team/members/:time' do
-		time = params[:time]
+		time = params[:time].to_i
 		if (time < 0 or time > Time.now.to_i ) 
 			halt 401, "Unknown entity"
 		end
-		json @team.users_modified_after
-	end
+		objectArrayToJson (@team.users_modified_after time)
+	end 
 
 	get '/team/tasks/:time' do
-		time = params[:time]
+		time = params[:time].to_i
 		if time < 0 or time > Time.now.to_i 
 			halt 401, "Unknown entity"
 		end
-		json @team.tasks_modified_after
+		objectArrayToJson (@team.tasks_modified_after time )
 	end
 
 

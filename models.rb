@@ -3,7 +3,7 @@ require 'dm-core'
 require 'dm-types'
 require 'dm-validations'
 require 'date'
-
+require 'dm-serializer'
 # Time interaction with user is done in epoch  
 
 
@@ -41,8 +41,7 @@ class User
 		true
 	end
 
-
-	def to_json(*a)
+	def to_hash
 		{
 			:id => id,
 			:username => username,
@@ -52,9 +51,12 @@ class User
 			:modified_after => modified_after,
 			:team_id => team.id,
 			:image_url => image_url,
-			:task_ids  => tasks.map {|task| task.id},
+			:tasks  => tasks.map {|task| task.to_hash},
 			
-		}.to_json(*a)
+		}
+	end
+	def to_json(*a)
+		self.to_hash.to_json
 	end
 
 	def self.from_hash(hash)
@@ -98,8 +100,9 @@ class Team
 	
 	validates_uniqueness_of :name
 
-	def to_json (*a)
+	def to_hash 
 		{
+			:id => id,
 			:name => name,
 			:image_url => image_url,
 			:scrum_master => scrum_master.id,
@@ -108,9 +111,13 @@ class Team
 			:task_modified_after => task_modified_after,		
 			:user_modified_after => user_modified_after,
 			:modified_after => modified_after,
-			:members  => members.map {|member| member},
-			:tasks  => tasks.map {|task| task},	
-		}.to_json(*a)
+			:members  => members.map {|member| member.to_hash},
+			:tasks  => tasks.map {|task| task.to_hash},	
+		}
+	end
+
+	def to_json(*a)
+		self.to_hash.to_json
 	end
 
 	def self.from_hash(hash)
@@ -165,7 +172,7 @@ class Task
 		true
 	end
 
-	def to_json(*a)
+	def to_hash
 		{
 			:id => id,
 			:title => title,
@@ -178,7 +185,10 @@ class Task
 			:created_after => created_after,
 			:priority => priority
 
-		}.to_json(*a)
+		}
+	end
+	def to_json(*a)
+		self.to_hash.to_json(*a)
 	end
 
 	def self.from_hash(hash)
@@ -205,6 +215,13 @@ class Session
 	property :digest, String, :length => 1..255
 
 	belongs_to :user
+
+	def to_json(*a){
+		:id => id,
+		:token => digest,
+		:user => user
+		}.to_json(*a)
+	end
 
 end
 
