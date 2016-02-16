@@ -5,7 +5,7 @@ require 'dm-validations'
 require 'date'
 require 'dm-serializer'
 # Time interaction with user is done in epoch  
-
+#create a unique identifier composed of token:modified_at:client_id and it sould be unique
 
 class User
 	include DataMapper::Resource
@@ -17,6 +17,7 @@ class User
 	property :password, BCryptHash
 	property :image_url, String 	# to get image from imgur
 		
+	property :reg_token, String, :length => 5..255
 		#server only
 	property :created_at, DateTime   # handles by datamapper 
 	property :updated_at, DateTime   # handles by datamapper
@@ -32,26 +33,40 @@ class User
 
 	after :save do
 		if not self.team.nil?
-			self.team.user_modified_after = self.modified_after
+			team = self.team
+			team.user_modified_after = self.modified_after
+			team.save
 		end
 		true
 	end
-	before :save do
-		self.modified_after = Time.now.to_i
+
+	after :create do
+		if not self.team.nil?
+			self.team.user_modified_after = self.modified_after
+			self.team.save
+		end
 		true
 	end
 
+	before :create do
+		self.modified_after = Time.now.to_i
+	end
+
+	before :save do
+		self.modified_after = Time.now.to_i
+	end
 	def to_hash
 		{
 			:id => id,
 			:username => username,
 			:full_name => full_name,
-			# :created_at => created_at.strftime("%s"),
-			# :updated_at => updated_at.strftime("%s"),
+			:created_at => created_at.strftime("%s").to_i,
+			:updated_at => updated_at.strftime("%s").to_i,
 			:modified_after => modified_after,
 			:team_id => team.id,
 			:image_url => image_url,
 			:tasks  => tasks.map {|task| task.to_hash},
+			:reg_token => reg_token
 			
 		}
 	end
@@ -70,7 +85,9 @@ class User
 		self.username = hash["username"]
 		self.full_name = hash["full_name"]
 		self.image_url = hash["image_url"]
-		self.modified_after = hash["modified_after"]
+		if not hash["reg_token"].nil?
+			self.reg_token =hash["reg_token"]
+		end
 	end
 
 end
@@ -100,14 +117,18 @@ class Team
 	
 	validates_uniqueness_of :name
 
+	before :save do
+		self.modified_after = Time.now.to_i
+		true
+	end
 	def to_hash 
 		{
 			:id => id,
 			:name => name,
 			:image_url => image_url,
 			:scrum_master => scrum_master.id,
-			# :created_at => created_at.strftime("%s"),
-			# :updated_at => updated_at.strftime("%s"),
+			:created_at => created_at.strftime("%s").to_i,
+			:updated_at => updated_at.strftime("%s").to_i,
 			:task_modified_after => task_modified_after,		
 			:user_modified_after => user_modified_after,
 			:modified_after => modified_after,
@@ -129,7 +150,6 @@ class Team
 		self.name = hash["name"]
 		self.pass = hash["pass"]
 		self.image_url = hash["image_url"]	
-		self.modified_after = hash["modified_after"]
 	end
 
 
@@ -155,10 +175,17 @@ class Task
 	property :created_at, DateTime   # handles by datamapper
 	property :updated_at, DateTime   # handles by datamapper
 
+			# for server only 
+	property :m_created_at, Integer   # to be passed by client
+	property :m_updated_at, Integer   # to be passed by client
+
+	property :complete_on, Integer 
+
 		# for server interaction	
 	property :modified_after, Integer, :default => 0  
 	property :created_after, Integer, :default => 0   # as time need to be synced and passed to other clients
 
+	property :sync_code , String, :length => 1..255
 
 	belongs_to :user
 	belongs_to :team
@@ -167,7 +194,25 @@ class Task
 
 	after :save do 
 		if not self.team.nil?
-			self.team.task_modified_after = self.modified_after
+			team = self.team
+			team.task_modified_after = self.updated_at.strftime("%s")
+			team.save
+		end
+		true
+	end
+	before :save do
+		self.modified_after =  Time.now.to_i
+		true
+	end
+
+	before :create do 
+		self.modified_after = Time.now.to_i
+	end
+	after :create do 
+		if not self.team.nil?
+			team = self.team
+			team.task_modified_after = self.updated_at.strftime("%s")
+			team.save
 		end
 		true
 	end
@@ -181,9 +226,13 @@ class Task
 			:user_id => user.id,
 			:team_id => team.id,
 			:image_url => image_url,
-			:modified_after => modified_after,
-			:created_after => created_after,
-			:priority => priority
+			:created_at => created_at.strftime("%s").to_i,
+			:updated_at => updated_at.strftime("%s").to_i,
+			:m_updated_at => m_updated_at,
+			:m_created_at => m_created_at,
+			:priority => priority,
+			:sync_code => sync_code,
+			:complete_on => complete_on,
 
 		}
 	end
@@ -199,12 +248,13 @@ class Task
 
 	def update_from_hash(hash)
 		self.title = hash["title"]
-		self.details = hash["details"]
+		self.detail = hash["detail"]
 		self.isComplete = ( hash["is_complete"] == "true" ? true : false)
 		self.image_url = hash["image_url"]
 		self.priority = hash["priority"]
-		self.created_after =  hash["created_after"] 
-		self.modified_after =  hash["modified_after"]
+		self.sync_code = hash["sync_code"]
+		self.m_created_at = hash["m_created_at"]
+		self.m_updated_at = hash["m_updated_at"]
 	end
 
 end

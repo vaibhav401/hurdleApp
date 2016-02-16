@@ -3,7 +3,12 @@ require "sinatra/json"
 require 'json'
 require 'digest'
 require 'pry'
+require 'gcm'
+require 'rest-client'
+
+
 require_relative 'models'
+load 'gcm_key.secret'
 
 # to dos
 # Use GET, POST, PATCH and DELETE verbs , only using GET and POST, so edit with Put
@@ -82,38 +87,55 @@ end
 		protected!
 	end
 
-	def verify_task_sync (modified_after)
-		task = Task.first(:modified_after => modified_after)
+	def verify_task_sync (sync_code)
+		task = Task.first(:sync_code => sync_code)
 		if task
-			json @task
+			task
 		else
-			true
+			nil
 		end
 	end
 
 	post '/tasks' do
 		request_hash = processJson request
-		modified_after = request_hash["modified_after"]
-		verify_task_sync(modified_after)
+		sync_code = request_hash["sync_code"]
+		verified_task = verify_task_sync(sync_code)
+		if not verified_task.nil? 
+			json verified_task
+		end
 		task = Task.from_hash(request_hash)
 		task.user = @user
 		task.team = @user.team
 		return_value = nil
 		if task.save
+			puts task.to_json
+			puts task.user.to_json
 			json task
 		else
+			puts errorHash task
 			json (errorHash task)
 		end
 	end
 
 	patch '/task/:id' do
 		request_hash = processJson request
-		modified_after = request_hash["modified_after"]
-		verify_task_sync(modified_after)
+		puts request_hash
+		sync_code = request_hash["sync_code"]
+		verified_task = verify_task_sync(sync_code)
+		if verified_task 
+			puts "Existing patch"
+			json verified_task
+		end
 		task = Task.first(:id => params[:id].to_i)
 		task.update_from_hash request_hash
 		return_value = nil
 		if task.save
+			puts task.to_json
+			puts task.user.to_json
+			gcm_tokens = task.team.members.each { |user| user.reg_token}
+			title = "perform sync"
+			body = {}
+			send_gcm_message_to_devices title, bodym gcm_tokens
 			json task
 		else
 			json errorHash task
@@ -161,15 +183,28 @@ end
 	before '/user/*' do
 		protected!
 	end
+	before '/register*' do
+		protected!
+	end
 
 	get '/user' do
 		protected!
 		json @user
 	end
 
+	# to associate a gcm token with user
+	post '/register/:gcm_token' do
+		puts "saving token"
+		@user.reg_token = params[:gcm_token]
+		if @user.save
+			return @user.to_json
+		end
+		halt 401, "Check User data"
+	end
+
 	post '/user' do  
 		request_hash = processJson request
-		puts request
+		puts request_hash
 		user = User.from_hash(request_hash)
 		team_name = request_hash["team_name"]
 		team_pass = request_hash["team_pass"]
@@ -183,12 +218,12 @@ end
 				result = JSON.parse user.to_json
 				result["token"] = token 
 				puts result
-				json result
+				return (json result)
 			else
-				puts user
-				json (errorHash user)
+				halt 400, "Check User data"
 			end
 		end
+		halt 400, "Unknown Team name or Pass"
 	end
 
 	patch '/user/:id' do
@@ -332,5 +367,27 @@ end
 
 def digest(username, full_name)
 	Digest::SHA256.hexdigest (username + full_name)
+end
+
+def send_gcm_message_to_devices(title, body, reg_tokens)
+	gcm = GCM.new("AUTHORIZE_KEY")
+	options = { :data => { :title => title, :body => body } }
+    response = gcm.send(reg_tokens, options)
+end
+def send_gcm_message_to_server(title, body, reg_tokens)
+  # Construct JSON payload
+  post_args = {
+    # :to field can also be used if there is only 1 reg token to send
+    :registration_ids => reg_tokens,
+    :data => {
+      :title  => title,
+      :body => body,
+      # additional data here 
+    }
+  }
+
+  # Send the request with JSON args and headers
+  RestClient.post 'https://gcm-http.googleapis.com/gcm/send', post_args.to_json,
+    :Authorization => 'key=' + AUTHORIZE_KEY, :content_type => :json, :accept => :json
 end
 

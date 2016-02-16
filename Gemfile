@@ -6,3 +6,5 @@ gem "dm-sqlite-adapter"
 gem "sinatra-contrib"
 gem 'pry'
 gem 'json'
+gem 'gcm'
+gem 'rest-client'
