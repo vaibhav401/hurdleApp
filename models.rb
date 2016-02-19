@@ -249,12 +249,13 @@ class Task
 	def update_from_hash(hash)
 		self.title = hash["title"]
 		self.detail = hash["detail"]
-		self.isComplete = ( hash["is_complete"] == "true" ? true : false)
+		self.isComplete =  hash["is_complete"] 
 		self.image_url = hash["image_url"]
 		self.priority = hash["priority"]
 		self.sync_code = hash["sync_code"]
 		self.m_created_at = hash["m_created_at"]
 		self.m_updated_at = hash["m_updated_at"]
+		self.complete_on = hash["complete_on"]
 	end
 
 end

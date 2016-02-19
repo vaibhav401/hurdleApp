@@ -8,3 +8,6 @@ gem 'pry'
 gem 'json'
 gem 'gcm'
 gem 'rest-client'
+gem "capistrano"
+gem "capistrano-bundler"
+gem "capistrano-passanger"

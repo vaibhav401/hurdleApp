@@ -39,7 +39,7 @@ end
 def processJson (request)
 	request.body.rewind
   	request_payload = JSON.parse request.body.read
-  	puts request_payload
+  	# puts request_payload
   	request_payload
 end
 
@@ -66,14 +66,20 @@ post '/signin' do
 		if user and user.password == password
 			session = Session.first(:user => user) # if a session already exists return it 
 			if not session.nil?
-				return (json session)
+				result = session.user.to_hash
+				result["token"] = session.digest
+				# puts "session already exists", result
+				return (json result)
 			end
-			token = digest(user.username, user.full_name)
-			session = Session.create(:user => user, :digest => token)
-			session.save
-			binding.pry #for debugging
+				token = digest(user.username, user.full_name)
+				session = Session.create(:user => user, :digest => token)
+				session.save
+				result = JSON.parse user.to_json
+				result["token"] = token 
+				# puts " new session created", result
 			return json (session) # return json with token
 		end
+		halt 400, "wrong username or password"
 	end
 	headers['WWW-Authenticate'] = 'Wrong Username password'
     halt 401, "Not authorized\n"
@@ -108,34 +114,47 @@ end
 		task.team = @user.team
 		return_value = nil
 		if task.save
-			puts task.to_json
-			puts task.user.to_json
+			# puts task.to_json
+			# puts task.user.to_json
+			gcm_tokens = task.team.members.collect { |user| user.reg_token if user != task.user}
+			send_gcm_message_to_devices(GCM_TYPE_UPDATE_DB, @user.full_name + " inserted new task", 
+					gcm_tokens)
 			json task
 		else
-			puts errorHash task
+			# puts errorHash task
 			json (errorHash task)
 		end
 	end
 
 	patch '/task/:id' do
 		request_hash = processJson request
-		puts request_hash
+		# puts request_hash
 		sync_code = request_hash["sync_code"]
 		verified_task = verify_task_sync(sync_code)
-		if verified_task 
-			puts "Existing patch"
-			json verified_task
+		if not verified_task.nil? 
+			# puts "Existing patch"
+			# puts verified_task
+			return json verified_task
 		end
+		task_done_now = request_hash["is_complete"]
 		task = Task.first(:id => params[:id].to_i)
+		task_done_status_before = task.isComplete
 		task.update_from_hash request_hash
 		return_value = nil
-		if task.save
-			puts task.to_json
-			puts task.user.to_json
-			gcm_tokens = task.team.members.each { |user| user.reg_token}
+		if task.save 
+			# puts task.to_json
+			# puts task.user.to_json
+			gcm_tokens = task.team.members.collect { |user| user.reg_token if user != task.user}
 			title = "perform sync"
 			body = {}
-			send_gcm_message_to_devices title, bodym gcm_tokens
+			if task_done_now and not task_done_status_before #and @user.team.scrum_master != @user
+				send_gcm_message_to_devices(GCM_TYPE_TASK_DONE, @user.full_name + " completed his task", [task.team.scrum_master.reg_token])
+			end
+			send_gcm_message_to_devices(GCM_TYPE_UPDATE_DB, @user.full_name + " inserted new task", 
+					gcm_tokens)
+			# binding.pry
+			# send_gcm_message_to_devices(GCM_TYPE_UPDATE_DB, "", gcm_tokens)
+			# puts task
 			json task
 		else
 			json errorHash task
@@ -194,7 +213,7 @@ end
 
 	# to associate a gcm token with user
 	post '/register/:gcm_token' do
-		puts "saving token"
+		# puts "saving token"
 		@user.reg_token = params[:gcm_token]
 		if @user.save
 			return @user.to_json
@@ -204,23 +223,48 @@ end
 
 	post '/user' do  
 		request_hash = processJson request
-		puts request_hash
-		user = User.from_hash(request_hash)
+		# puts request_hash
+		allowed = false
+		team_error = false
 		team_name = request_hash["team_name"]
 		team_pass = request_hash["team_pass"]
-		team = Team.first(:name => team_name)
-		if team and team.pass == team_pass
+		if(request_hash["new_team"]) 
+			team = Team.new
+			team.name = team_name
+			team.pass = team_pass
+			if  team.save
+				allowed = true
+			else
+				team_error = true
+			end
+		else
+			team = Team.first(:name => team_name)
+			if team and team.pass == team_pass
+				allowed = true
+			end
+		end
+
+		user = User.from_hash(request_hash)
+
+		if team and allowed
 			user.team = team
 			if user.save
+				if request_hash["new_team"] == "true"
+					team.scrum_master = user
+					team.save
+				end
 				token = digest(user.username, user.full_name)
 				session = Session.create(:user => user, :digest => token)
 				session.save
 				result = JSON.parse user.to_json
 				result["token"] = token 
-				puts result
+				# puts result
+				gcm_tokens = user.team.members.collect { |user_inside| user_inside.reg_token if user_inside != user}
+				send_gcm_message_to_devices(GCM_TYPE_UPDATE_DB, user.full_name + " is new user", 
+					gcm_tokens)
 				return (json result)
 			else
-				halt 400, "Check User data"
+				halt 400, "Username must be unique"
 			end
 		end
 		halt 400, "Unknown Team name or Pass"
@@ -294,9 +338,8 @@ end
 
 	post '/team' do
 		request_hash = processJson request 
-		sync_code = request_hash["sync_code"]
-		verify_task_sync(sync_code)
-		team =  Team.new(request_hash)
+		team =  Team.from_hash request_hash
+		team.from_hash ()
 		team.scrum_master = @user
 		team.members.push @user
 		if team.save
@@ -308,8 +351,6 @@ end
 
 	patch '/team' do
 		request_hash = processJson request 
-		sync_code = request_hash["sync_code"]
-		verify_task_sync(sync_code)
 		team = @user.team
 		team.update_from_hash request_hash
 		team.scrum_master = @user
@@ -368,12 +409,18 @@ end
 def digest(username, full_name)
 	Digest::SHA256.hexdigest (username + full_name)
 end
+GCM_TYPE_TASK_DONE = "task_done"
+GCM_TYPE_UPDATE_DB = "update_db"
 
-def send_gcm_message_to_devices(title, body, reg_tokens)
-	gcm = GCM.new("AUTHORIZE_KEY")
-	options = { :data => { :title => title, :body => body } }
-    response = gcm.send(reg_tokens, options)
+
+def send_gcm_message_to_devices(type, message, registration_ids)
+	# puts registration_ids
+	# puts "sending message"
+	gcm = GCM.new(GCM_AUTHORIZE_KEY)
+	options = {data: {type: type, message: message}}
+    response = gcm.send(registration_ids, options)
 end
+
 def send_gcm_message_to_server(title, body, reg_tokens)
   # Construct JSON payload
   post_args = {
@@ -388,6 +435,6 @@ def send_gcm_message_to_server(title, body, reg_tokens)
 
   # Send the request with JSON args and headers
   RestClient.post 'https://gcm-http.googleapis.com/gcm/send', post_args.to_json,
-    :Authorization => 'key=' + AUTHORIZE_KEY, :content_type => :json, :accept => :json
+    :Authorization => 'key=' + GCM_AUTHORIZE_KEY, :content_type => :json, :accept => :json
 end
 
