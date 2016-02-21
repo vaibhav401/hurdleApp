@@ -195,7 +195,7 @@ class Task
 	after :save do 
 		if not self.team.nil?
 			team = self.team
-			team.task_modified_after = self.updated_at.strftime("%s")
+			team.task_modified_after = self.updated_at.strftime("%s").to_i
 			team.save
 		end
 		true
@@ -211,7 +211,7 @@ class Task
 	after :create do 
 		if not self.team.nil?
 			team = self.team
-			team.task_modified_after = self.updated_at.strftime("%s")
+			team.task_modified_after = self.updated_at.strftime("%s").to_i
 			team.save
 		end
 		true
