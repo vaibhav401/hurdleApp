@@ -14,7 +14,7 @@ load 'gcm_key.secret'
 # Use GET, POST, PATCH and DELETE verbs , only using GET and POST, so edit with Put
 	# create input  first point out things you are expecting at first
 	# Only creation should handle the sync phase
-# No need for an extra key sync, choose _id to be unique 
+# No need for an extra key sync,x
 # get error handling up and running
 	#JSON.parse (request.body.read)
 
