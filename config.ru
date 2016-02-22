@@ -6,4 +6,10 @@ root_dir = File.dirname(__FILE__)
 app_file = File.join(root_dir, 'hurdleApp.rb')
 require app_file
  
-run HurdleApp
+set :environment, ENV['RACK_ENV'].to_sym
+set :root,        root_dir
+set :app_file,    app_file
+disable :run
+
+run HurdleApp 
+

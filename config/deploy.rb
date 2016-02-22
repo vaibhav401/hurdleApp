@@ -3,12 +3,19 @@ require 'rvm/capistrano'
 require 'bundler/capistrano'
  
 #RVM and bundler settings
-set :bundle_cmd, "/home/deploy/.rvm/gems/ruby-2.0.0-p247@global/bin/bundle"
+
+set :bundler_cmd, "bundle install --deployment --without=development,test"
 set :bundle_dir, "/home/deploy/.rvm/gems/ruby-2.0.0-p247/gems"
 set :rvm_ruby_string, :local
 set :rack_env, :production
- 
+      # use the same ruby as used locally for deployment
+set :use_sudo, false
+
+before 'deploy', 'rvm:install_rvm'  # install/update RVM
+before 'deploy', 'rvm:install_ruby' 
 #general info
+
+set :default_shell, "/bin/bash -l"
 set :user, 'deploy'
 set :domain, 'www-huddle.practodev.com'
 set :applicationdir, "/var/www/hurdleapp"
@@ -49,6 +56,7 @@ namespace :deploy do
   desc "Not starting as we're running passenger."
   task :start do
   end
+end
 
 
 
